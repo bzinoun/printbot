@@ -10,7 +10,9 @@
     "setup": "tsx --env-file=.env scripts/setup-instance.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "test:coverage": "vitest run --coverage --coverage.include='src/**' --coverage.exclude='src/__tests__/**' --coverage.exclude='src/index.ts'",
+    "check": "tsc --noEmit && vitest run && tsx scripts/smoke.ts"
   },
   "dependencies": {
     "express": "^4.21.2",
@@ -21,6 +23,7 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.13.0",
+    "@vitest/coverage-v8": "^3.2.7",
     "tsx": "^4.19.0",
     "typescript": "^5.7.3",
     "vitest": "^3.1.1"

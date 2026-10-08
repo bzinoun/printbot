@@ -10,8 +10,8 @@ import { logger } from '../logger.js'
 const log = logger.child({ module: 'stt' })
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/audio/transcriptions'
-const MAX_RETRIES = 3
-const BACKOFF_MS = 1500
+/** Réglages de retry (modifiables par les tests). */
+export const sttRetry = { maxRetries: 3, backoffMs: 1500 }
 
 export async function transcribe(audioBase64: string, language = getConfig().sttLanguage): Promise<string> {
   const { groqApiKey } = getConfig()
@@ -20,7 +20,7 @@ export async function transcribe(audioBase64: string, language = getConfig().stt
   const audio = Buffer.from(audioBase64.includes(',') ? audioBase64.split(',')[1] : audioBase64, 'base64')
 
   let lastError: unknown
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= sttRetry.maxRetries; attempt++) {
     try {
       const form = new FormData()
       form.append('file', new Blob([audio], { type: 'audio/ogg' }), 'vocal.ogg')
@@ -44,9 +44,9 @@ export async function transcribe(audioBase64: string, language = getConfig().stt
       return text
     } catch (err) {
       lastError = err
-      if ((err as { fatal?: boolean }).fatal || attempt === MAX_RETRIES) break
+      if ((err as { fatal?: boolean }).fatal || attempt === sttRetry.maxRetries) break
       log.warn({ attempt, error: String(err) }, 'STT en échec — nouvel essai')
-      await new Promise((r) => setTimeout(r, BACKOFF_MS * 2 ** (attempt - 1)))
+      await new Promise((r) => setTimeout(r, sttRetry.backoffMs * 2 ** (attempt - 1)))
     }
   }
   throw lastError

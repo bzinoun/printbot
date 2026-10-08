@@ -93,9 +93,21 @@ fichiers attendus) sont dans [`prompts/designer.md`](prompts/designer.md) : adap
 ## Tests
 
 ```bash
-npm test          # classification oui/non/modif, parsing webhook, sortie Claude…
-npm run smoke     # parcours complet avec faux WhatsApp + faux Claude
+npm run check          # types + 289 tests unitaires + parcours complet simulé (à lancer avant la démo)
+npm test               # tests unitaires seuls
+npm run test:coverage  # couverture (≈ 99 %)
 ```
+
+Ce que les tests verrouillent :
+
+| Domaine | Garanties |
+|---|---|
+| **Validation** (`intent`) | Une impression ne part que si **tous** les mots sont des « oui » connus : « ok, fais-le en étoile » ou « imprime un cube » deviennent des modifications. « non », « pas maintenant », « لا » annulent. |
+| **Machine à états** (`bot`) | Conception → aperçu → oui/non/modif ; pas de double conception si deux vocaux arrivent en même temps ; « oui » envoyé deux fois = une seule impression ; un ancien `print.json` ne fait jamais croire à un succès ; un aperçu périmé n'est jamais renvoyé. |
+| **Pannes** | Claude en erreur, timeout ou absent ; Whisper, ElevenLabs ou WhatsApp en panne ; OpenSCAD absent : le bot répond toujours un message clair et reste utilisable. |
+| **Claude** | Prompt passé par stdin (guillemets, `$`, accents), reprise de session, outils d'impression interdits pendant la conception, variables de la session Claude parente retirées. |
+| **WhatsApp** | Numéros `@lid`, suffixes d'appareil, groupes/statuts/chaînes ignorés, whitelist, doublons. |
+| **Serveur** | Le webhook répond tout de suite même si Claude travaille plusieurs minutes ; une erreur n'arrête jamais le serveur. |
 
 ## Check-list démo
 

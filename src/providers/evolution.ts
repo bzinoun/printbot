@@ -19,6 +19,7 @@ export class EvolutionClient {
     private baseUrl = getConfig().evolutionApiUrl,
     private apiKey = getConfig().evolutionApiKey,
     private instance = getConfig().evolutionInstance,
+    private retryBaseMs = 1000,
   ) {}
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
@@ -42,7 +43,7 @@ export class EvolutionClient {
       } catch (err) {
         lastError = err
         if ((err as { fatal?: boolean }).fatal || attempt === RETRIES) break
-        await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)))
+        await new Promise((r) => setTimeout(r, this.retryBaseMs * 2 ** (attempt - 1)))
       }
     }
     log.error({ path, error: String(lastError) }, 'Appel Evolution en échec')

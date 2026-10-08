@@ -116,6 +116,21 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
     return
   }
 
+  try {
+    await processMessage(msg)
+  } catch (err) {
+    // Filet de sécurité : l'utilisateur doit toujours avoir une réponse
+    log.error({ error: err instanceof Error ? err.stack : String(err) }, 'Erreur interne')
+    await say(msg.replyTo, '😕 Oups, j’ai eu un souci de mon côté. Tu peux renvoyer ta demande ?')
+  }
+}
+
+/** Pour les tests et /status : état courant d'un numéro. */
+export function getSessionState(number: string): Readonly<Session> | undefined {
+  return sessions.get(number)
+}
+
+async function processMessage(msg: Incoming): Promise<void> {
   const to = msg.replyTo
   const s = session(msg.number)
 
@@ -178,6 +193,13 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
       return
     }
     return design(to, s, text, { modify: true })
+  }
+
+  // Un « oui » / « non » isolé alors que rien n'attend de validation
+  // (ex. « oui » envoyé deux fois) ne doit pas devenir une demande d'objet « oui ».
+  if (!imageBase64 && classifyReply(text) !== 'modify') {
+    await say(to, '🤔 Je n’ai rien en attente de validation. Qu’est-ce que je t’imprime ?')
+    return
   }
 
   if (imageBase64) {

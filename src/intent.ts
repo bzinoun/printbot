@@ -1,6 +1,10 @@
 /**
  * Classe la réponse de l'utilisateur à l'aperçu : confirmer, annuler ou modifier.
  * Volontairement déterministe (pas de LLM) : rapide et prévisible sur scène.
+ *
+ * Principe de sécurité : on ne confirme (= lance l'impression) que si TOUS les mots
+ * du message sont des mots d'acquiescement connus. Le moindre mot inconnu
+ * (« ok, fais-le en étoile ») fait basculer vers une modification.
  * Gère le français, quelques mots d'anglais et de darija.
  */
 
@@ -11,42 +15,44 @@ export function normalize(text: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
-    .replace(/[’']/g, ' ')
     .replace(/[^a-z0-9؀-ۿ\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-const CONFIRM = [
-  'oui', 'ouais', 'ouai', 'ok', 'okay', 'oki', 'd accord', 'dac', 'vas y', 'vas-y', 'va y', 'go', 'lance', 'lance le',
-  'lance la', 'imprime', 'imprime le', 'imprime la', 'c est bon', 'c est parti', 'c est parfait', 'c est top',
-  'c est nickel', 'c est super', 'tres bien', 'excellent', 'parfait', 'valide', 'je valide',
-  'top', 'nickel', 'super', 'yes', 'yep', 'yeah', 'sure', 'wakha', 'iyeh', 'ayeh', 'safi', 'yallah', 'yalla',
-  'نعم', 'واخا', 'اه', 'يالاه',
-]
+/** Mots porteurs d'un « oui ». */
+const CONFIRM_CORE = new Set([
+  'oui', 'ouais', 'ouai', 'ok', 'okay', 'oki', 'accord', 'dac', 'vas', 'va', 'go', 'lance', 'lancer', 'lancez',
+  'imprime', 'imprimer', 'imprimez', 'bon', 'parti', 'parfait', 'top', 'nickel', 'super', 'bien', 'excellent',
+  'genial', 'cool', 'valide', 'valider', 'confirme', 'yes', 'yep', 'yeah', 'sure', 'wakha', 'iyeh', 'ayeh', 'safi',
+  'yalla', 'yallah', 'allez', 'نعم', 'واخا', 'اه', 'يالاه',
+])
 
-const CANCEL = [
-  'non', 'nan', 'no', 'nope', 'annule', 'annuler', 'stop', 'arrete', 'laisse tomber', 'oublie', 'pas maintenant',
-  'لا',
-]
+/** Mots neutres tolérés autour d'un « oui » (« oui c'est bon, vas-y lance l'impression merci »). */
+const CONFIRM_FILLER = new Set([
+  'd', 'c', 'est', 'y', 'le', 'la', 'l', 'les', 'ca', 'je', 'on', 'impression', 'tres', 'merci', 'please', 'stp',
+  'svp', 's', 'il', 'te', 'vous', 'plait', 'maintenant', 'tout', 'de', 'suite', 'oui', 'chef', 'bro',
+])
 
-/** Mots qui signalent une demande de changement, même après un « oui » ou un « non ». */
-const CHANGE_WORDS =
-  /\b(mais|plus|moins|change|changer|modifie|modifier|ajoute|ajouter|enleve|enlever|retire|remplace|agrandi|agrandis|reduis|reduire|grand|petit|large|epais|fin|texte|ecris|couleur|trou|rond|carre|tourne|version|refais|plutot|sans)\b/
+/** Mots porteurs d'un « non ». */
+const CANCEL_CORE = new Set([
+  'non', 'nan', 'no', 'nope', 'annule', 'annuler', 'annulez', 'stop', 'arrete', 'arreter', 'laisse', 'tomber',
+  'oublie', 'oublier', 'cancel', 'pas', 'لا',
+])
 
-function matchesStart(text: string, words: string[]): boolean {
-  return words.some((w) => text === w || text.startsWith(w + ' '))
+const CANCEL_FILLER = new Set(['merci', 'maintenant', 'finalement', 'c', 'est', 'bon', 'ca', 'tout', 'le', 'la', 'l', 'impression'])
+
+function allIn(words: string[], core: Set<string>, filler: Set<string>): boolean {
+  return words.some((w) => core.has(w)) && words.every((w) => core.has(w) || filler.has(w))
 }
 
 export function classifyReply(raw: string): Reply {
-  const text = normalize(raw)
-  if (!text) return 'modify'
-  const wordCount = text.split(' ').length
-
-  if (CHANGE_WORDS.test(text)) return 'modify'
-  if (wordCount <= 6 && matchesStart(text, CONFIRM)) return 'confirm'
-  if (/\b(lance|lancer|lances) (l )?impression\b/.test(text) || /\bvas[ -]?y\b/.test(text)) return 'confirm'
-  if (wordCount <= 4 && matchesStart(text, CANCEL)) return 'cancel'
+  const words = normalize(raw).split(' ').filter(Boolean)
+  if (!words.length || words.length > 10) return 'modify'
+  // « non » en tête l'emporte (« non c'est bon » = non merci)
+  if (CANCEL_CORE.has(words[0]) && allIn(words, CANCEL_CORE, CANCEL_FILLER)) return 'cancel'
+  if (allIn(words, CONFIRM_CORE, CONFIRM_FILLER)) return 'confirm'
+  if (allIn(words, CANCEL_CORE, CANCEL_FILLER)) return 'cancel'
   return 'modify'
 }
 

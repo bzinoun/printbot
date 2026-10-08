@@ -58,7 +58,7 @@ export function parseClaudeOutput(stdout: string): Omit<ClaudeResult, 'durationM
       return {
         sessionId: obj.session_id,
         text: String(obj.result ?? '').trim(),
-        isError: Boolean(obj.is_error) || (obj.subtype && obj.subtype !== 'success'),
+        isError: Boolean(obj.is_error) || Boolean(obj.subtype && obj.subtype !== 'success'),
         costUsd: obj.total_cost_usd,
       }
     } catch {
