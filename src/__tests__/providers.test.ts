@@ -118,6 +118,15 @@ describe('EvolutionClient', () => {
     expect(call().init.method).toBe('GET')
   })
 
+  it('instanceExists : oui / non (404) / erreur réelle', async () => {
+    fetchMock.mockResolvedValueOnce(json({ instance: { state: 'close' } }))
+    expect(await evo().instanceExists()).toBe(true)
+    fetchMock.mockResolvedValueOnce(text('Not Found', 404))
+    expect(await evo().instanceExists()).toBe(false)
+    fetchMock.mockResolvedValueOnce(text('Unauthorized', 401))
+    await expect(evo().instanceExists()).rejects.toThrow(/401/)
+  })
+
   it('createInstance : Baileys + QR + webhook MESSAGES_UPSERT', async () => {
     fetchMock.mockResolvedValue(json({}))
     await evo().createInstance('http://host.docker.internal:4100/webhook')

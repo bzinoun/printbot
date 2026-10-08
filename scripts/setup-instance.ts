@@ -10,24 +10,24 @@ const config = getConfig()
 const evo = getEvolution()
 
 try {
-  await evo.createInstance(config.webhookPublicUrl)
-  console.log(`✅ Instance « ${config.evolutionInstance} » créée`)
-} catch (err) {
-  const msg = String(err)
-  if (/already|in use|existe/i.test(msg)) console.log(`ℹ️  Instance « ${config.evolutionInstance} » déjà existante`)
-  else {
-    console.error(`❌ Création impossible : ${msg}`)
-    process.exit(1)
+  if (await evo.instanceExists()) {
+    console.log(`✅ Instance « ${config.evolutionInstance} » déjà créée`)
+  } else {
+    await evo.createInstance(config.webhookPublicUrl)
+    console.log(`✅ Instance « ${config.evolutionInstance} » créée`)
   }
+} catch (err) {
+  console.error(`❌ Instance WhatsApp impossible à créer : ${err}`)
+  process.exit(1)
 }
 
 try {
   await evo.setWebhook(config.webhookPublicUrl)
   console.log(`✅ Webhook → ${config.webhookPublicUrl}`)
-} catch (err) {
-  console.warn(`⚠️  Webhook d'instance non configuré (le webhook global du docker-compose suffit) : ${err}`)
+} catch {
+  console.log('ℹ️  Webhook global du docker-compose utilisé')
 }
 
 const state = await evo.getConnectionState().catch(() => 'unknown')
 console.log(`📱 WhatsApp : ${state}`)
-if (state !== 'open') console.log(`👉 Lance « npm start » puis ouvre http://localhost:${config.port}/qr pour scanner le QR code`)
+if (state !== 'open') console.log(`👉 QR code à scanner : http://localhost:${config.port}/qr (avec le téléphone du bot)`)

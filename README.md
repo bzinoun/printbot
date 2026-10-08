@@ -53,23 +53,30 @@ npm run snapshot   # trouve la fenêtre, la photographie, enregistre snapshot.jp
 ## Installation (Mac)
 
 ```bash
-# 1. Pré-requis
+# Pré-requis (une fois)
 brew install node
 brew install --cask openscad docker
-claude --version            # Claude Code installé et connecté (claude login)
+npm install -g @anthropic-ai/claude-code && claude login
 
-# 2. Projet
 git clone https://github.com/bzinoun/printbot && cd printbot
-npm install
-cp .env.example .env        # puis remplir (voir ci-dessous)
-
-# 3. Passerelle WhatsApp
-docker compose up -d        # Evolution API sur :8085
-npm run setup               # crée l'instance « printbot » et branche le webhook
-
-# 4. Bot
-npm start                   # puis ouvrir http://localhost:4100/qr et scanner avec le téléphone du bot
+./start.sh          # 1er lancement : crée .env → remplis-le, puis relance
 ```
+
+`./start.sh` fait tout, dans l'ordre, et s'arrête avec une explication claire si quelque chose manque :
+
+1. vérifie `.env` (numéros autorisés, clés Groq / ElevenLabs, port du webhook) ;
+2. vérifie Node, Claude Code, OpenSCAD (trouve l'app tout seul) et installe les dépendances ;
+3. démarre Docker Desktop si besoin, puis la passerelle WhatsApp (Evolution API) et crée l'instance ;
+4. teste la caméra (fenêtre Bambu Studio) et enregistre `snapshot.jpg` ;
+5. ouvre la page du QR code si WhatsApp n'est pas encore connecté ;
+6. lance le bot en empêchant le Mac de se mettre en veille (`caffeinate`).
+
+| Commande | Usage |
+|---|---|
+| `./start.sh` | Lancer la démo |
+| `./start.sh --check` | Lancer tous les tests d'abord (recommandé le jour J) |
+| `./start.sh status` | WhatsApp, bot et caméra : tout est-il prêt ? |
+| `./start.sh stop` | Arrêter la passerelle WhatsApp (la session est conservée) |
 
 > ⚠️ Utilise un **numéro dédié** pour le bot (WhatsApp n'a pas d'API officielle pour ce type de bot,
 > risque de bannissement). Ton numéro perso va dans `ALLOWED_NUMBERS`.

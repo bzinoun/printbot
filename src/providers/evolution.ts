@@ -22,7 +22,7 @@ export class EvolutionClient {
     private retryBaseMs = 1000,
   ) {}
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown, opts: { quiet?: boolean } = {}): Promise<T> {
     let lastError: unknown
     for (let attempt = 1; attempt <= RETRIES; attempt++) {
       try {
@@ -46,7 +46,7 @@ export class EvolutionClient {
         await new Promise((r) => setTimeout(r, this.retryBaseMs * 2 ** (attempt - 1)))
       }
     }
-    log.error({ path, error: String(lastError) }, 'Appel Evolution en échec')
+    if (!opts.quiet) log.error({ path, error: String(lastError) }, 'Appel Evolution en échec')
     throw lastError
   }
 
@@ -124,6 +124,17 @@ export class EvolutionClient {
 
   async getQrCode(): Promise<{ base64?: string; code?: string }> {
     return this.request('GET', `/instance/connect/${this.instance}`)
+  }
+
+  /** L'instance WhatsApp existe-t-elle déjà ? (sans journaliser d'erreur si non) */
+  async instanceExists(): Promise<boolean> {
+    try {
+      await this.request('GET', `/instance/connectionState/${this.instance}`, undefined, { quiet: true })
+      return true
+    } catch (err) {
+      if (/Evolution API 404/.test(String(err))) return false
+      throw err
+    }
   }
 
   async getConnectionState(): Promise<string> {
