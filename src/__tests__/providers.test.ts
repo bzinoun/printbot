@@ -34,11 +34,17 @@ describe('EvolutionClient', () => {
     expect(c.body).toEqual({ number: '212600000001', text: 'Bonjour' })
   })
 
-  it('sendImage : base64 brut (préfixe data: retiré), PNG, légende', async () => {
+  it('sendImage : image affichée (mediatype image, JPEG par défaut), base64 brut, légende', async () => {
     fetchMock.mockResolvedValue(json({}))
-    await evo().sendImage('2126', 'data:image/png;base64,QUJD', 'Légende')
+    await evo().sendImage('2126', 'data:image/jpeg;base64,QUJD', 'Légende')
     expect(call().url).toBe('http://evo/message/sendMedia/printbot')
-    expect(call().body).toMatchObject({ number: '2126', mediatype: 'image', mimetype: 'image/png', media: 'QUJD', caption: 'Légende' })
+    expect(call().body).toMatchObject({ number: '2126', mediatype: 'image', mimetype: 'image/jpeg', media: 'QUJD', caption: 'Légende', fileName: 'photo.jpg' })
+  })
+
+  it('sendImage : PNG si demandé explicitement (repli si la conversion a échoué)', async () => {
+    fetchMock.mockResolvedValue(json({}))
+    await evo().sendImage('2126', 'QUJD', '', 'image/png')
+    expect(call().body).toMatchObject({ mediatype: 'image', mimetype: 'image/png', fileName: 'apercu.png' })
   })
 
   it('sendImage en JPEG (photo caméra)', async () => {

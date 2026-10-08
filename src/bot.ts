@@ -12,6 +12,7 @@ import { getConfig } from './config.js'
 import { classifyReply, parseCommand } from './intent.js'
 import { clearOutputs, createJobDir, ensurePreview, readJob, readPrint, type JobInfo } from './job.js'
 import { logger } from './logger.js'
+import { toWhatsAppJpeg } from './media.js'
 import { cameraEnabled, cameraHelp, captureLiveView, capturePhoto } from './printer/camera.js'
 import { PrintMonitor } from './printer/monitor.js'
 import { getEvolution } from './providers/evolution.js'
@@ -121,7 +122,22 @@ export function formatCaption(job: JobInfo | null | undefined, fallback: string)
 
 // ── Point d'entrée ─────────────────────────────────────────────
 
-export async function handleIncoming(msg: Incoming): Promise<void> {
+/** Traitements en cours (pour attendre la fin du travail : tests, arrêt propre). */
+const inFlight = new Set<Promise<void>>()
+
+export function handleIncoming(msg: Incoming): Promise<void> {
+  const work = handleIncomingNow(msg)
+  inFlight.add(work)
+  void work.finally(() => inFlight.delete(work))
+  return work
+}
+
+/** Résout quand plus aucun message n'est en cours de traitement. */
+export async function whenIdle(): Promise<void> {
+  while (inFlight.size) await Promise.allSettled([...inFlight])
+}
+
+async function handleIncomingNow(msg: Incoming): Promise<void> {
   if (seen.has(msg.id)) return
   seen.add(msg.id)
   if (seen.size > 1000) seen.delete(seen.values().next().value as string)
@@ -260,6 +276,7 @@ async function design(
   opts: { modify: boolean; imagePath?: string; name?: string },
 ): Promise<void> {
   s.busy = 'design'
+  let voiceLine: string | undefined
   try {
     if (!opts.modify && !opts.imagePath) {
       s.jobDir = createJobDir(request)
@@ -309,18 +326,21 @@ async function design(
     if (preview) {
       const png = await readFile(preview)
       try {
-        await getEvolution().sendImage(to, png.toString('base64'), caption)
+        await sendPicture(to, png, caption)
       } catch {
         await say(to, caption)
       }
     } else {
       await say(to, `${caption}\n\n(⚠️ aperçu indisponible)`)
     }
-    await speak(to, job?.say ?? caption)
     s.state = 'awaiting_confirm'
+    voiceLine = job?.say ?? caption
   } finally {
     s.busy = null
   }
+  // La note vocale (1 à 3 s chez ElevenLabs) part APRÈS avoir libéré le bot :
+  // un « oui » envoyé dès l'affichage de l'aperçu doit être accepté, pas refusé.
+  if (voiceLine) await speak(to, voiceLine)
 }
 
 // ── Impression ─────────────────────────────────────────────────
@@ -332,6 +352,7 @@ async function print(to: string, s: Session): Promise<void> {
     return
   }
   s.busy = 'print'
+  let voiceLine: string | undefined
   try {
     clearOutputs(s.jobDir, ['print.json'])
     await say(to, '🚀 C’est parti, j’envoie à la Bambu Lab…')
@@ -356,9 +377,9 @@ async function print(to: string, s: Session): Promise<void> {
       lastPrintAt = Date.now()
       s.lastPrint = `${s.job?.title ?? 'objet'} (${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})`
       const monitor = startMonitor(to, s, info?.est_minutes ?? s.job?.est_print_minutes)
-      const next = Math.round((monitor.firstLayerAt - monitor.startedAt) / 60_000)
+      const next = Math.round((monitor.firstLayerAt - monitor.startedAt) / getConfig().minuteMs)
       await say(to, `✅ Impression lancée !${detail ? `\n${detail}` : ''}\n⏱️ Je t’envoie des nouvelles dans ~${next} min.`)
-      await speak(to, `C'est parti, l'impression est lancée${info?.est_minutes ? `, environ ${Math.round(info.est_minutes)} minutes` : ''}.`)
+      voiceLine = `C'est parti, l'impression est lancée${info?.est_minutes ? `, environ ${Math.round(info.est_minutes)} minutes` : ''}.`
     } else {
       s.state = 'awaiting_confirm'
       await say(to, `❌ L’impression n’est pas partie : ${detail.slice(0, 300) || 'erreur inconnue'}\nRéponds *oui* pour réessayer.`)
@@ -366,13 +387,23 @@ async function print(to: string, s: Session): Promise<void> {
   } finally {
     s.busy = null
   }
+  if (voiceLine) await speak(to, voiceLine)
 }
 
 // ── Suivi et caméra ────────────────────────────────────────────
 
+/**
+ * Envoie une image qui s'affiche dans la conversation WhatsApp (JPEG, type « image »),
+ * jamais comme un fichier joint. Lève une erreur si l'envoi échoue.
+ */
+async function sendPicture(to: string, image: Buffer, caption: string): Promise<void> {
+  const { data, mimetype } = await toWhatsAppJpeg(image)
+  await getEvolution().sendImage(to, data.toString('base64'), caption, mimetype)
+}
+
 async function sendImageOrText(to: string, jpeg: Buffer, caption: string): Promise<void> {
   try {
-    await getEvolution().sendImage(to, jpeg.toString('base64'), caption, 'image/jpeg')
+    await sendPicture(to, jpeg, caption)
   } catch (err) {
     log.warn({ error: String(err) }, 'Envoi de la photo impossible')
     await say(to, caption)
@@ -383,7 +414,7 @@ function startMonitor(to: string, s: Session, estMinutes?: number): PrintMonitor
   s.monitor?.stop()
   const c = getConfig()
   s.monitor = new PrintMonitor(
-    { prepMinutes: c.printPrepMinutes, estMinutes, title: s.job?.title, location: c.printerLocation || undefined },
+    { prepMinutes: c.printPrepMinutes, estMinutes, title: s.job?.title, location: c.printerLocation || undefined, minuteMs: c.minuteMs },
     {
       capture: capturePhoto,
       cameraExpected: cameraEnabled(),

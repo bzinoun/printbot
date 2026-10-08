@@ -31,13 +31,13 @@ export function toSpeakable(text: string): string {
 /** Retourne une note vocale OGG/Opus en base64, ou null si le TTS est indisponible. */
 export async function synthesize(text: string): Promise<string | null> {
   if (!ttsEnabled()) return null
-  const { elevenLabsApiKey, elevenLabsVoiceId } = getConfig()
+  const { elevenLabsApiKey, elevenLabsVoiceId, elevenLabsApiUrl } = getConfig()
   const speakable = toSpeakable(text).slice(0, 600)
   if (!speakable) return null
 
   try {
     const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsVoiceId}?output_format=opus_48000_64`,
+      `${elevenLabsApiUrl.replace(/\/$/, '')}/v1/text-to-speech/${elevenLabsVoiceId}?output_format=opus_48000_64`,
       {
         method: 'POST',
         headers: { 'xi-api-key': elevenLabsApiKey, 'Content-Type': 'application/json' },

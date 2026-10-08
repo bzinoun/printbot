@@ -20,6 +20,8 @@ export interface MonitorPlan {
   estMinutes?: number
   title?: string
   location?: string
+  /** Durée d'une minute en ms (60 000 ; réduit dans les tests d'intégration). */
+  minuteMs?: number
 }
 
 export interface MonitorDeps {
@@ -35,7 +37,6 @@ export const DEFAULT_PRINT_MINUTES = 20
 /** Marge après la fin estimée (refroidissement, imprécision de l'estimation). */
 export const FINISH_MARGIN_MINUTES = 1
 
-const MIN = 60_000
 
 export class PrintMonitor {
   readonly startedAt = Date.now()
@@ -47,17 +48,21 @@ export class PrintMonitor {
     private deps: MonitorDeps,
   ) {}
 
+  private get MIN(): number {
+    return this.plan.minuteMs ?? 60_000
+  }
+
   get estMinutes(): number {
     return Math.max(1, Math.round(this.plan.estMinutes ?? DEFAULT_PRINT_MINUTES))
   }
 
   /** Premier calque posé : fin de la préparation + 1 min. */
   get firstLayerAt(): number {
-    return this.startedAt + (this.plan.prepMinutes + 1) * MIN
+    return this.startedAt + (this.plan.prepMinutes + 1) * this.MIN
   }
 
   get finishAt(): number {
-    return this.startedAt + (this.plan.prepMinutes + this.estMinutes + FINISH_MARGIN_MINUTES) * MIN
+    return this.startedAt + (this.plan.prepMinutes + this.estMinutes + FINISH_MARGIN_MINUTES) * this.MIN
   }
 
   get active(): boolean {
@@ -83,9 +88,9 @@ export class PrintMonitor {
   /** Ligne pour /status. */
   statusLine(now = Date.now()): string {
     if (this.stopped) return ''
-    const elapsed = Math.floor((now - this.startedAt) / MIN)
-    const left = Math.max(0, Math.ceil((this.finishAt - now) / MIN))
-    if (now < this.startedAt + this.plan.prepMinutes * MIN) return `🔥 Préparation de l’imprimante (lancée il y a ${elapsed} min)`
+    const elapsed = Math.floor((now - this.startedAt) / this.MIN)
+    const left = Math.max(0, Math.ceil((this.finishAt - now) / this.MIN))
+    if (now < this.startedAt + this.plan.prepMinutes * this.MIN) return `🔥 Préparation de l’imprimante (lancée il y a ${elapsed} min)`
     return `🖨️ Impression en cours${this.where()} — fin estimée dans ~${left} min`
   }
 

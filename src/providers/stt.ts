@@ -9,12 +9,11 @@ import { logger } from '../logger.js'
 
 const log = logger.child({ module: 'stt' })
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/audio/transcriptions'
 /** Réglages de retry (modifiables par les tests). */
 export const sttRetry = { maxRetries: 3, backoffMs: 1500 }
 
 export async function transcribe(audioBase64: string, language = getConfig().sttLanguage): Promise<string> {
-  const { groqApiKey } = getConfig()
+  const { groqApiKey, groqApiUrl } = getConfig()
   if (!groqApiKey) throw new Error('GROQ_API_KEY manquant : impossible de transcrire le vocal')
 
   const audio = Buffer.from(audioBase64.includes(',') ? audioBase64.split(',')[1] : audioBase64, 'base64')
@@ -28,7 +27,7 @@ export async function transcribe(audioBase64: string, language = getConfig().stt
       form.append('response_format', 'text')
       if (language) form.append('language', language)
 
-      const res = await fetch(GROQ_URL, {
+      const res = await fetch(`${groqApiUrl.replace(/\/$/, '')}/audio/transcriptions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${groqApiKey}` },
         body: form,

@@ -54,7 +54,11 @@ export class EvolutionClient {
     await this.request('POST', `/message/sendText/${this.instance}`, { number: to, text })
   }
 
-  async sendImage(to: string, imageBase64: string, caption = '', mimetype: 'image/png' | 'image/jpeg' = 'image/png'): Promise<void> {
+  /**
+   * Image affichée dans la conversation : mediatype « image » (un « document »
+   * arriverait comme fichier joint). Préparer l'image avec toWhatsAppJpeg().
+   */
+  async sendImage(to: string, imageBase64: string, caption = '', mimetype: 'image/png' | 'image/jpeg' = 'image/jpeg'): Promise<void> {
     await this.request('POST', `/message/sendMedia/${this.instance}`, {
       number: to,
       mediatype: 'image',
@@ -65,7 +69,10 @@ export class EvolutionClient {
     })
   }
 
-  /** Note vocale WhatsApp (OGG/Opus en base64). */
+  /**
+   * Note vocale WhatsApp (bulle avec onde, lecture dans la conversation) :
+   * sendWhatsAppAudio, et non sendMedia « audio » qui donnerait un fichier audio.
+   */
   async sendVoice(to: string, oggBase64: string): Promise<void> {
     await this.request('POST', `/message/sendWhatsAppAudio/${this.instance}`, {
       number: to,
@@ -147,7 +154,14 @@ export class EvolutionClient {
 }
 
 let client: EvolutionClient | null = null
+let clientConfig: ReturnType<typeof getConfig> | null = null
+
+/** Client partagé, recréé si la configuration change (tests d'intégration). */
 export function getEvolution(): EvolutionClient {
-  if (!client) client = new EvolutionClient()
+  const config = getConfig()
+  if (!client || clientConfig !== config) {
+    client = new EvolutionClient(config.evolutionApiUrl, config.evolutionApiKey, config.evolutionInstance, config.retryBaseMs)
+    clientConfig = config
+  }
   return client
 }

@@ -25,9 +25,11 @@ const ConfigSchema = z.object({
   allowedNumbers: z.array(z.string().regex(/^\d{6,15}$/, 'ALLOWED_NUMBERS : chiffres uniquement')),
 
   groqApiKey: z.string(),
+  groqApiUrl: z.string().url(),
   sttLanguage: z.string(),
 
   elevenLabsApiKey: z.string(),
+  elevenLabsApiUrl: z.string().url(),
   elevenLabsVoiceId: z.string(),
   voiceReplies: z.boolean(),
 
@@ -45,6 +47,10 @@ const ConfigSchema = z.object({
   cameraApp: z.string().min(1),
   printerLocation: z.string(),
   printPrepMinutes: z.number().min(0),
+  /** Durée d'une « minute » du suivi (tests d'intégration : accéléré). */
+  minuteMs: z.number().int().positive(),
+  /** Délai de base entre deux essais d'envoi WhatsApp (ms). */
+  retryBaseMs: z.number().int().positive(),
 })
 
 export type Config = z.infer<typeof ConfigSchema>
@@ -63,9 +69,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedNumbers: csv(env.ALLOWED_NUMBERS).map((n) => n.replace(/\D/g, '')),
 
     groqApiKey: env.GROQ_API_KEY ?? '',
+    groqApiUrl: env.GROQ_API_URL || 'https://api.groq.com/openai/v1',
     sttLanguage: env.STT_LANGUAGE ?? 'fr',
 
     elevenLabsApiKey: env.ELEVENLABS_API_KEY ?? '',
+    elevenLabsApiUrl: env.ELEVENLABS_API_URL || 'https://api.elevenlabs.io',
     elevenLabsVoiceId: env.ELEVENLABS_VOICE_ID ?? '',
     voiceReplies: bool(env.VOICE_REPLIES, true),
 
@@ -83,6 +91,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cameraApp: env.CAMERA_APP || 'Bambu Studio',
     printerLocation: env.PRINTER_LOCATION ?? '',
     printPrepMinutes: Number(env.PRINT_PREP_MINUTES || 5),
+    minuteMs: Number(env.PRINTBOT_MINUTE_MS || 60_000),
+    retryBaseMs: Number(env.PRINTBOT_RETRY_MS || 1000),
   })
 }
 

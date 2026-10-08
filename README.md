@@ -123,10 +123,23 @@ fichiers attendus) sont dans [`prompts/designer.md`](prompts/designer.md) : adap
 ## Tests
 
 ```bash
-npm run check          # types + 360 tests unitaires + parcours complet simulé (à lancer avant la démo)
-npm test               # tests unitaires seuls
-npm run test:coverage  # couverture (≈ 99 %)
+npm run check             # types + 388 tests + parcours simulé (à lancer avant la démo)
+npm run test:unit         # tests unitaires
+npm run test:integration  # la démo complète jouée de bout en bout (≈ 10 s)
+npm run test:coverage     # couverture
 ```
+
+**Tests d'intégration** (`test/integration/`) : le vrai serveur PrintBot tourne, entouré de
+faux services aussi stricts que les vrais (`test/fakes/`) — Evolution API v2 (WhatsApp),
+Groq Whisper, ElevenLabs, Claude Code et les outils macOS de capture. Le temps du suivi est
+accéléré (1 minute = 40 ms). Après chaque scénario, une règle commune vérifie ce qui arrive
+sur le téléphone :
+
+- 🖼️ chaque image part en **type « image » et en vrai JPEG** (octets vérifiés) → affichée dans
+  la conversation, jamais comme fichier joint ; aperçus OpenSCAD (PNG) convertis, captures
+  Retina réduites à 1600 px, légendes ≤ 1024 caractères ;
+- 🔊 chaque audio part en **note vocale** (`sendWhatsAppAudio`, OGG/Opus), jamais en fichier audio ;
+- ✅ aucune requête refusée par WhatsApp (clé, numéro, base64 brut sans préfixe `data:`).
 
 Ce que les tests verrouillent :
 
@@ -138,6 +151,7 @@ Ce que les tests verrouillent :
 | **Claude** | Prompt passé par stdin (guillemets, `$`, accents), reprise de session, outils d'impression interdits pendant la conception, variables de la session Claude parente retirées. |
 | **WhatsApp** | Numéros `@lid`, suffixes d'appareil, groupes/statuts/chaînes ignorés, whitelist, doublons. |
 | **Serveur** | Le webhook répond tout de suite même si Claude travaille plusieurs minutes ; une erreur n'arrête jamais le serveur. |
+| **Réactivité** | Un « oui » envoyé dès l'affichage de l'aperçu est accepté même si la note vocale est encore en préparation. |
 | **Caméra & suivi** | Bonne fenêtre choisie (app, taille, visible), capture JPEG réduite, aucun fichier temporaire laissé ; photos au bon moment (horloge simulée) ; caméra absente ou en panne → message clair ; deuxième impression bloquée tant que le plateau n'est pas confirmé vide. |
 
 ## Check-list démo

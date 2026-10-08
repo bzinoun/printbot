@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import sharp from 'sharp'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ClaudeResult, ClaudeRun } from '../claude.js'
 import { FRIEND, ME, PNG, useConfig } from './helpers.js'
 
@@ -557,7 +558,10 @@ describe('formatCaption', () => {
 
 // ══════════════════════════════════════════════════════════════════
 describe('après l’impression : suivi à distance et caméra', () => {
-  const JPEG = Buffer.from('jpeg-live')
+  let JPEG: Buffer
+  beforeAll(async () => {
+    JPEG = await sharp({ create: { width: 64, height: 48, channels: 3, background: '#335577' } }).jpeg().toBuffer()
+  })
   const lastImageCall = () => h.evo.sendImage.mock.calls.at(-1)!
 
   beforeEach(() => {
@@ -585,14 +589,15 @@ describe('après l’impression : suivi à distance et caméra', () => {
       const before = h.evo.sendImage.mock.calls.length
 
       await vi.advanceTimersByTimeAsync(6 * 60_000)
-      expect(h.evo.sendImage.mock.calls.length).toBe(before + 1)
+      await vi.waitFor(() => expect(h.evo.sendImage.mock.calls.length).toBe(before + 1))
       expect(lastImageCall()[1]).toBe(JPEG.toString('base64'))
       expect(lastImageCall()[2]).toContain('📸 Ça imprime à Casablanca')
       expect(lastImageCall()[3]).toBe('image/jpeg')
 
       // print.json annonce 12 min → fin à 5 + 12 + 1 = 18 min
       await vi.advanceTimersByTimeAsync(12 * 60_000)
-      expect(lastImageCall()[2]).toContain('🏁 *Porte-clé AUSIM* devrait être prêt à Casablanca')
+      await vi.waitFor(() => expect(lastImageCall()[2]).toContain('🏁 *Porte-clé AUSIM* devrait être prêt à Casablanca'))
+      await vi.waitFor(() => expect(state()?.monitor?.active).toBe(false))
       expect(h.synthesize).toHaveBeenLastCalledWith('Ton objet devrait être prêt à Casablanca !')
       expect(state()?.monitor?.active).toBe(false)
     } finally {
