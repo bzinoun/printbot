@@ -12,6 +12,8 @@ import { getConfig } from './config.js'
 import { classifyReply, parseCommand } from './intent.js'
 import { clearOutputs, createJobDir, ensurePreview, readJob, readPrint, type JobInfo } from './job.js'
 import { logger } from './logger.js'
+import { cameraEnabled, cameraHelp, captureLiveView, capturePhoto } from './printer/camera.js'
+import { PrintMonitor } from './printer/monitor.js'
 import { getEvolution } from './providers/evolution.js'
 import { transcribe } from './providers/stt.js'
 import { synthesize } from './providers/tts.js'
@@ -26,6 +28,10 @@ interface Session {
   claudeSessionId?: string
   job?: JobInfo | null
   lastPrint?: string
+  /** Suivi de la dernière impression lancée (photos, fin estimée). */
+  monitor?: PrintMonitor
+  /** L'avertissement « plateau vide ? » a déjà été donné pour cet aperçu. */
+  plateWarned?: boolean
 }
 
 const sessions = new Map<string, Session>()
@@ -37,9 +43,17 @@ function session(id: string): Session {
   return s
 }
 
+/**
+ * Une seule imprimante, partagée par tous les numéros autorisés : l'A1 mini n'éjecte
+ * pas ses pièces et personne n'est sur place pour vider le plateau.
+ */
+let lastPrintAt: number | null = null
+
 export function resetAll(): void {
+  for (const s of sessions.values()) s.monitor?.stop()
   sessions.clear()
   seen.clear()
+  lastPrintAt = null
 }
 
 export function isAllowed(number: string): boolean {
@@ -88,7 +102,8 @@ export const HELP = [
   '📸 Ou une *photo* d’un croquis',
   '👀 Je t’envoie l’aperçu, tu réponds *oui* pour imprimer, *non* pour annuler, ou tu dis ce qu’il faut changer.',
   '',
-  'Commandes : /status · /reset',
+  '📷 */photo* : vue en direct de l’imprimante',
+  'Commandes : /status · /photo · /reset',
 ].join('\n')
 
 export function formatCaption(job: JobInfo | null | undefined, fallback: string): string {
@@ -171,7 +186,9 @@ async function processMessage(msg: Incoming): Promise<void> {
   const command = parseCommand(text)
   if (command === 'help') return say(to, HELP)
   if (command === 'status') return say(to, statusText(s))
+  if (command === 'photo') return sendLivePhoto(to, s)
   if (command === 'reset') {
+    s.monitor?.stop()
     sessions.delete(msg.number)
     return say(to, '🧹 C’est noté, on repart de zéro. Qu’est-ce que je t’imprime ?')
   }
@@ -186,7 +203,20 @@ async function processMessage(msg: Incoming): Promise<void> {
   if (s.state === 'awaiting_confirm' && !imageBase64) {
     const reply = classifyReply(text)
     log.info({ reply, text }, 'Réponse à l’aperçu')
-    if (reply === 'confirm') return print(to, s)
+    if (reply === 'confirm') {
+      if (lastPrintAt !== null && !s.plateWarned) {
+        s.plateWarned = true
+        const at = new Date(lastPrintAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+        const where = getConfig().printerLocation
+        await say(
+          to,
+          `⚠️ Une impression a déjà été lancée à ${at}${where ? ` à ${where}` : ''}. Le plateau doit être *vide* avant d’en lancer une autre.
+Si c’est bon, renvoie *oui*.`,
+        )
+        return
+      }
+      return print(to, s)
+    }
     if (reply === 'cancel') {
       s.state = 'idle'
       await say(to, '👌 Pas d’impression. Dis-moi quand tu veux autre chose !')
@@ -216,6 +246,8 @@ function statusText(s: Session): string {
   const lines = [`État : ${state}`]
   if (s.job?.title) lines.push(`Dernier objet : ${s.job.title}`)
   if (s.lastPrint) lines.push(`Dernière impression : ${s.lastPrint}`)
+  const progress = s.monitor?.statusLine()
+  if (progress) lines.push(progress)
   return lines.join('\n')
 }
 
@@ -320,8 +352,12 @@ async function print(to: string, s: Session): Promise<void> {
 
     if (sent) {
       s.state = 'idle'
+      s.plateWarned = false
+      lastPrintAt = Date.now()
       s.lastPrint = `${s.job?.title ?? 'objet'} (${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})`
-      await say(to, `✅ Impression lancée !${detail ? `\n${detail}` : ''}`)
+      const monitor = startMonitor(to, s, info?.est_minutes ?? s.job?.est_print_minutes)
+      const next = Math.round((monitor.firstLayerAt - monitor.startedAt) / 60_000)
+      await say(to, `✅ Impression lancée !${detail ? `\n${detail}` : ''}\n⏱️ Je t’envoie des nouvelles dans ~${next} min.`)
       await speak(to, `C'est parti, l'impression est lancée${info?.est_minutes ? `, environ ${Math.round(info.est_minutes)} minutes` : ''}.`)
     } else {
       s.state = 'awaiting_confirm'
@@ -330,4 +366,40 @@ async function print(to: string, s: Session): Promise<void> {
   } finally {
     s.busy = null
   }
+}
+
+// ── Suivi et caméra ────────────────────────────────────────────
+
+async function sendImageOrText(to: string, jpeg: Buffer, caption: string): Promise<void> {
+  try {
+    await getEvolution().sendImage(to, jpeg.toString('base64'), caption, 'image/jpeg')
+  } catch (err) {
+    log.warn({ error: String(err) }, 'Envoi de la photo impossible')
+    await say(to, caption)
+  }
+}
+
+function startMonitor(to: string, s: Session, estMinutes?: number): PrintMonitor {
+  s.monitor?.stop()
+  const c = getConfig()
+  s.monitor = new PrintMonitor(
+    { prepMinutes: c.printPrepMinutes, estMinutes, title: s.job?.title, location: c.printerLocation || undefined },
+    {
+      capture: capturePhoto,
+      cameraExpected: cameraEnabled(),
+      sendPhoto: (jpeg, caption) => sendImageOrText(to, jpeg, caption),
+      sendText: (text) => say(to, text),
+      speak: (text) => speak(to, text),
+    },
+  ).start()
+  return s.monitor
+}
+
+async function sendLivePhoto(to: string, s: Session): Promise<void> {
+  void getEvolution().typing(to)
+  const shot = await captureLiveView().catch(() => ({ jpeg: null, failure: 'capture_failed' as const }))
+  if (!shot.jpeg) return say(to, cameraHelp(shot.failure))
+  const where = getConfig().printerLocation
+  const progress = s.monitor?.statusLine()
+  await sendImageOrText(to, shot.jpeg, `📷 En direct${where ? ` de ${where}` : ''}${progress ? `\n${progress}` : ''}`)
 }

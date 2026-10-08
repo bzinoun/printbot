@@ -64,7 +64,12 @@ describe('parseCommand', () => {
     ['/reset', 'reset'], ['/nouveau', 'reset'], ['/annule', 'reset'],
   ])('%s → %s', (t, cmd) => expect(parseCommand(t)).toBe(cmd))
 
-  it.each(['reset', 'status', 'oui', '/inconnu', 'imprime /reset'])('« %s » n’est pas une commande', (t) =>
+  it.each([
+    '/photo', '/cam', '/camera', '/live', 'photo', 'Photo.', 'Caméra', 'montre', 'Montre-moi', "Montre-moi l'imprimante",
+    'montre la photo', 'Fais voir le plateau', "Où en est l'impression ?", 'ou en est l objet',
+  ])('« %s » → photo', (t) => expect(parseCommand(t)).toBe('photo'))
+
+  it.each(['reset', 'status', 'oui', '/inconnu', 'imprime /reset', 'un cadre photo', 'montre-moi un vase en forme de cœur', 'photo de mon chat en 3D'])('« %s » n’est pas une commande', (t) =>
     expect(parseCommand(t)).toBeNull(),
   )
 })

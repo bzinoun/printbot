@@ -59,6 +59,17 @@ describe('loadConfig', () => {
     expect(loadConfig({ ...base, STT_LANGUAGE: '' }).sttLanguage).toBe('')
   })
 
+  it('caméra et suivi : valeurs par défaut', () => {
+    expect(loadConfig(base)).toMatchObject({ cameraMode: 'window', cameraApp: 'Bambu Studio', printerLocation: '', printPrepMinutes: 5 })
+  })
+
+  it('caméra : Bambu Handy, écran entier, désactivée', () => {
+    expect(loadConfig({ ...base, CAMERA_APP: 'Bambu Handy', CAMERA_MODE: 'screen' })).toMatchObject({ cameraApp: 'Bambu Handy', cameraMode: 'screen' })
+    expect(loadConfig({ ...base, CAMERA_MODE: 'off' }).cameraMode).toBe('off')
+    expect(() => loadConfig({ ...base, CAMERA_MODE: 'webcam' })).toThrow()
+    expect(() => loadConfig({ ...base, PRINT_PREP_MINUTES: '-1' })).toThrow()
+  })
+
   it('variables vides → valeurs par défaut', () => {
     const c = loadConfig({ ...base, CLAUDE_BIN: '', OPENSCAD_BIN: '', CLAUDE_TIMEOUT_MS: '' })
     expect(c.claudeBin).toBe('claude')

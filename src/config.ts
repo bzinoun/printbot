@@ -40,6 +40,11 @@ const ConfigSchema = z.object({
 
   openscadBin: z.string().min(1),
   jobsDir: z.string().min(1),
+
+  cameraMode: z.enum(['window', 'screen', 'off']),
+  cameraApp: z.string().min(1),
+  printerLocation: z.string(),
+  printPrepMinutes: z.number().min(0),
 })
 
 export type Config = z.infer<typeof ConfigSchema>
@@ -73,6 +78,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
     openscadBin: env.OPENSCAD_BIN || 'openscad',
     jobsDir: path.resolve(env.JOBS_DIR || './jobs'),
+
+    cameraMode: env.CAMERA_MODE || 'window',
+    cameraApp: env.CAMERA_APP || 'Bambu Studio',
+    printerLocation: env.PRINTER_LOCATION ?? '',
+    printPrepMinutes: Number(env.PRINT_PREP_MINUTES || 5),
   })
 }
 

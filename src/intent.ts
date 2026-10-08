@@ -56,12 +56,18 @@ export function classifyReply(raw: string): Reply {
   return 'modify'
 }
 
-export type Command = 'help' | 'status' | 'reset'
+export type Command = 'help' | 'status' | 'reset' | 'photo'
+
+/** Demandes de photo en langage naturel, utiles à l'oral (« Montre-moi l'imprimante »). */
+const PHOTO_PHRASES =
+  /^(photo|camera|cam|montre|montre moi|fais voir)( (moi|l|la|le|de l|de la))?( (imprimante|impression|camera|photo|objet|plateau))?$|^ou en est (l )?(impression|imprimante|objet)$/
 
 export function parseCommand(raw: string): Command | null {
   const text = raw.trim().toLowerCase()
   if (/^\/(aide|help|start)\b/.test(text)) return 'help'
   if (/^\/(status|statut|etat)\b/.test(text)) return 'status'
   if (/^\/(reset|nouveau|new|annule)\b/.test(text)) return 'reset'
+  if (/^\/(photo|cam|camera|live)\b/.test(text)) return 'photo'
+  if (PHOTO_PHRASES.test(normalize(raw))) return 'photo'
   return null
 }

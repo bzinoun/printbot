@@ -11,12 +11,15 @@ const h = vi.hoisted(() => {
     sent,
     evo: {
       sendText: vi.fn(async (to: string, text: string) => void sent.push({ type: 'text', to, body: text })),
-      sendImage: vi.fn(async (to: string, _b64: string, caption = '') => void sent.push({ type: 'image', to, body: caption })),
+      sendImage: vi.fn(async (to: string, _b64: string, caption = '', _mime?: string) => void sent.push({ type: 'image', to, body: caption })),
       sendVoice: vi.fn(async (to: string, b64: string) => void sent.push({ type: 'voice', to, body: b64 })),
       typing: vi.fn(async () => {}),
       getMediaBase64: vi.fn(async () => Buffer.from('media').toString('base64')),
     },
     runClaude: vi.fn<(run: ClaudeRun) => Promise<ClaudeResult>>(),
+    camera: { enabled: false },
+    capturePhoto: vi.fn<() => Promise<Buffer | null>>(async () => null),
+    captureLiveView: vi.fn<() => Promise<{ jpeg: Buffer | null; failure?: string }>>(async () => ({ jpeg: null, failure: 'unsupported' })),
     transcribe: vi.fn<(b64: string) => Promise<string>>(),
     synthesize: vi.fn<(text: string) => Promise<string | null>>(async () => null),
   }
@@ -26,6 +29,12 @@ vi.mock('../providers/evolution.js', () => ({ getEvolution: () => h.evo }))
 vi.mock('../claude.js', () => ({ runClaude: h.runClaude }))
 vi.mock('../providers/stt.js', () => ({ transcribe: h.transcribe }))
 vi.mock('../providers/tts.js', () => ({ synthesize: h.synthesize }))
+vi.mock('../printer/camera.js', () => ({
+  cameraEnabled: () => h.camera.enabled,
+  capturePhoto: h.capturePhoto,
+  captureLiveView: h.captureLiveView,
+  cameraHelp: (failure?: string) => `HELP:${failure}`,
+}))
 
 const { handleIncoming, resetAll, getSessionState, formatCaption, HELP } = await import('../bot.js')
 
@@ -89,6 +98,9 @@ beforeEach(() => {
   h.evo.sendText.mockImplementation(async (to: string, text: string) => void h.sent.push({ type: 'text', to, body: text }))
   h.evo.getMediaBase64.mockImplementation(async () => Buffer.from('media').toString('base64'))
   h.synthesize.mockResolvedValue(null)
+  h.camera.enabled = false
+  h.capturePhoto.mockImplementation(async () => null)
+  h.captureLiveView.mockImplementation(async () => ({ jpeg: null, failure: 'unsupported' }))
   fakeClaude()
 })
 
@@ -540,5 +552,165 @@ describe('formatCaption', () => {
     const c = formatCaption({ size_mm: [50.4, 19.6, 4], est_print_minutes: 11.6 }, '')
     expect(c).toContain('50 × 20 × 4 mm')
     expect(c).toContain('~12 min')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════
+describe('après l’impression : suivi à distance et caméra', () => {
+  const JPEG = Buffer.from('jpeg-live')
+  const lastImageCall = () => h.evo.sendImage.mock.calls.at(-1)!
+
+  beforeEach(() => {
+    useConfig({ ALLOWED_NUMBERS: `${ME},${FRIEND}`, PRINTER_LOCATION: 'Casablanca', PRINT_PREP_MINUTES: '5' })
+  })
+
+  async function designAndPrint(number = ME) {
+    await textMsg('un porte-clé', number)
+    await textMsg('oui', number)
+  }
+
+  it('annonce les prochaines nouvelles et démarre le suivi', async () => {
+    await designAndPrint()
+    expect(lastText()).toContain('✅ Impression lancée')
+    expect(lastText()).toContain('nouvelles dans ~6 min')
+    expect(state()?.monitor?.active).toBe(true)
+  })
+
+  it('photo « ça imprime » puis photo finale + vocal, au bon moment (horloge simulée)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      h.capturePhoto.mockResolvedValue(JPEG)
+      h.synthesize.mockResolvedValue('b2dn')
+      await designAndPrint()
+      const before = h.evo.sendImage.mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(6 * 60_000)
+      expect(h.evo.sendImage.mock.calls.length).toBe(before + 1)
+      expect(lastImageCall()[1]).toBe(JPEG.toString('base64'))
+      expect(lastImageCall()[2]).toContain('📸 Ça imprime à Casablanca')
+      expect(lastImageCall()[3]).toBe('image/jpeg')
+
+      // print.json annonce 12 min → fin à 5 + 12 + 1 = 18 min
+      await vi.advanceTimersByTimeAsync(12 * 60_000)
+      expect(lastImageCall()[2]).toContain('🏁 *Porte-clé AUSIM* devrait être prêt à Casablanca')
+      expect(h.synthesize).toHaveBeenLastCalledWith('Ton objet devrait être prêt à Casablanca !')
+      expect(state()?.monitor?.active).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('/photo : vue en direct en JPEG', async () => {
+    h.captureLiveView.mockResolvedValue({ jpeg: JPEG })
+    await textMsg('/photo')
+    expect(lastImageCall()[2]).toBe('📷 En direct de Casablanca')
+    expect(lastImageCall()[3]).toBe('image/jpeg')
+    expect(h.runClaude).not.toHaveBeenCalled()
+  })
+
+  it('/photo pendant une impression : progression dans la légende', async () => {
+    await designAndPrint()
+    h.captureLiveView.mockResolvedValue({ jpeg: JPEG })
+    await textMsg('/photo')
+    expect(lastImageCall()[2]).toContain('🔥 Préparation de l’imprimante')
+  })
+
+  it('/photo sans caméra → explication de la cause', async () => {
+    h.captureLiveView.mockResolvedValue({ jpeg: null, failure: 'window_not_found' })
+    await textMsg('/photo')
+    expect(lastText()).toBe('HELP:window_not_found')
+  })
+
+  it('/photo : capture qui plante → explication, pas de crash', async () => {
+    h.captureLiveView.mockRejectedValue(new Error('boom'))
+    await textMsg('/photo')
+    expect(lastText()).toBe('HELP:capture_failed')
+  })
+
+  it('vocal « Montre-moi l’imprimante » → photo, pas de conception', async () => {
+    h.transcribe.mockResolvedValue('Montre-moi l’imprimante.')
+    h.captureLiveView.mockResolvedValue({ jpeg: JPEG })
+    await audioMsg()
+    expect(h.captureLiveView).toHaveBeenCalled()
+    expect(h.runClaude).not.toHaveBeenCalled()
+  })
+
+  it('/photo marche aussi pendant une attente de validation, sans la casser', async () => {
+    await textMsg('un vase')
+    h.captureLiveView.mockResolvedValue({ jpeg: JPEG })
+    await textMsg('photo')
+    expect(state()?.state).toBe('awaiting_confirm')
+    await textMsg('oui')
+    expect(lastText()).toContain('✅ Impression lancée')
+  })
+
+  it('/status affiche la progression', async () => {
+    await designAndPrint()
+    await textMsg('/status')
+    expect(lastText()).toContain('🔥 Préparation de l’imprimante')
+  })
+
+  it('/reset arrête le suivi', async () => {
+    await designAndPrint()
+    const monitor = state()?.monitor
+    await textMsg('/reset')
+    expect(monitor?.active).toBe(false)
+  })
+})
+
+describe('plateau à distance : une seule pièce à la fois', () => {
+  it('deuxième impression → avertissement « plateau vide », puis « oui » confirme', async () => {
+    await textMsg('un porte-clé')
+    await textMsg('oui')
+    await textMsg('un vase')
+    expect(h.runClaude).toHaveBeenCalledTimes(3)
+
+    await textMsg('oui')
+    expect(lastText()).toContain('Le plateau doit être *vide*')
+    expect(h.runClaude).toHaveBeenCalledTimes(3)
+
+    await textMsg('oui')
+    expect(h.runClaude).toHaveBeenCalledTimes(4)
+    expect(lastText()).toContain('✅ Impression lancée')
+  })
+
+  it('l’avertissement revient pour chaque nouvelle impression', async () => {
+    await textMsg('a'); await textMsg('oui')
+    await textMsg('b'); await textMsg('oui'); await textMsg('oui')
+    await textMsg('c'); await textMsg('oui')
+    expect(lastText()).toContain('plateau doit être *vide*')
+  })
+
+  it('« non » après l’avertissement → annulé', async () => {
+    await textMsg('a'); await textMsg('oui')
+    await textMsg('b'); await textMsg('oui')
+    await textMsg('non')
+    expect(lastText()).toContain('Pas d’impression')
+    expect(h.runClaude).toHaveBeenCalledTimes(3)
+  })
+
+  it('une seule imprimante : l’impression d’un autre numéro compte aussi', async () => {
+    await textMsg('a', FRIEND)
+    await textMsg('oui', FRIEND)
+    await textMsg('b', ME)
+    await textMsg('oui', ME)
+    expect(lastText()).toContain('plateau doit être *vide*')
+  })
+
+  it('une impression échouée ne compte pas', async () => {
+    await textMsg('a')
+    fakeClaude({ print: { status: 'error', message: 'hors ligne' } })
+    await textMsg('oui')
+    fakeClaude()
+    await textMsg('oui')
+    expect(lastText()).toContain('✅ Impression lancée')
+  })
+
+  it('nouvelle impression → l’ancien suivi est arrêté', async () => {
+    await textMsg('a'); await textMsg('oui')
+    const first = state()?.monitor
+    await textMsg('b'); await textMsg('oui'); await textMsg('oui')
+    expect(first?.active).toBe(false)
+    expect(state()?.monitor?.active).toBe(true)
   })
 })

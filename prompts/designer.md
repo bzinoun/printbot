@@ -40,6 +40,9 @@ référence) : inspire-t'en pour la forme et les proportions.
 
 - **Tu es chronométré devant un public** : vise moins d'une minute de travail. Pas d'exploration,
   pas de variantes, un seul modèle, un seul rendu. Ne lis pas d'autres fichiers que ceux du job.
+- **Imprimante : Bambu Lab A1 mini**, plateau **180 × 180 mm**, hauteur 180 mm, buse 0,4 mm, PLA,
+  cadre ouvert. Elle est à distance et personne n'est sur place : l'objet doit réussir du premier
+  coup (bonne adhérence : grande surface plane au contact du plateau, pas de pièce haute et fine).
 
 - Objet compact : **80 mm maximum** sur le plus grand côté, sauf demande explicite.
 - Viser **moins de 20 minutes** d'impression (peu de volume, parois fines mais solides).

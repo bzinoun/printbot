@@ -54,13 +54,13 @@ export class EvolutionClient {
     await this.request('POST', `/message/sendText/${this.instance}`, { number: to, text })
   }
 
-  async sendImage(to: string, pngBase64: string, caption = ''): Promise<void> {
+  async sendImage(to: string, imageBase64: string, caption = '', mimetype: 'image/png' | 'image/jpeg' = 'image/png'): Promise<void> {
     await this.request('POST', `/message/sendMedia/${this.instance}`, {
       number: to,
       mediatype: 'image',
-      mimetype: 'image/png',
-      media: stripDataUri(pngBase64),
-      fileName: 'apercu.png',
+      mimetype,
+      media: stripDataUri(imageBase64),
+      fileName: mimetype === 'image/jpeg' ? 'photo.jpg' : 'apercu.png',
       caption,
     })
   }

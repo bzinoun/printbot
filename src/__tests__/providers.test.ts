@@ -41,6 +41,12 @@ describe('EvolutionClient', () => {
     expect(call().body).toMatchObject({ number: '2126', mediatype: 'image', mimetype: 'image/png', media: 'QUJD', caption: 'Légende' })
   })
 
+  it('sendImage en JPEG (photo caméra)', async () => {
+    fetchMock.mockResolvedValue(json({}))
+    await evo().sendImage('2126', 'QUJD', 'Live', 'image/jpeg')
+    expect(call().body).toMatchObject({ mimetype: 'image/jpeg', fileName: 'photo.jpg' })
+  })
+
   it('sendVoice : note vocale WhatsApp', async () => {
     fetchMock.mockResolvedValue(json({}))
     await evo().sendVoice('2126', 'T0dH')

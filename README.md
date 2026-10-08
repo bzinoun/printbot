@@ -21,11 +21,34 @@ La brique WhatsApp (Evolution API, Whisper, ElevenLabs) est reprise du bot de n�
 | 🎤 « Fais-moi un porte-clé avec AUSIM 2026 » | 🎤 _« Fais-moi un porte-clé avec AUSIM 2026 »_ · 🎨 Je conçois… |
 | | 📸 aperçu 3D + « 75 × 17 × 4 mm · ~14 min. Réponds *oui* pour imprimer » + 🔊 vocal |
 | « Oui mais plus grand » | ✏️ Je modifie… → nouvel aperçu |
-| « Vas-y » | 🚀 J'envoie à la Bambu… · ✅ Impression lancée ! |
+| « Vas-y » | 🚀 J'envoie à la Bambu… · ✅ Impression lancée ! Nouvelles dans ~6 min |
+| | 📸 « Ça imprime à Casablanca ! » + photo de la vue caméra |
+| | 🏁 « Ton objet devrait être prêt ! » + photo + 🔊 vocal |
+| 🎤 « Montre-moi l'imprimante » | 📷 photo en direct |
 | 📸 photo d'un croquis | conçoit l'objet à partir du dessin |
 
 Réponses comprises : *oui / ok / vas-y / lance / wakha…*, *non / annule / stop…*, et tout le reste est
-traité comme une modification. Commandes : `/status`, `/reset`, `/aide`.
+traité comme une modification. Commandes : `/status`, `/photo`, `/reset`, `/aide`.
+
+## Imprimante à distance (A1 mini à Casablanca)
+
+L'imprimante n'est pas sur le réseau du Mac : l'impression passe par le cloud Bambu (ton plugin),
+et la « caméra » est **la fenêtre de l'app Bambu ouverte sur le Mac** (Bambu Studio, onglet
+Appareil, vue caméra), que PrintBot photographie avec les outils intégrés à macOS.
+
+```bash
+npm run snapshot   # trouve la fenêtre, la photographie, enregistre snapshot.jpg
+```
+
+- Autorise une fois **Enregistrement de l'écran** pour ton terminal (Réglages système ›
+  Confidentialité et sécurité), sinon la capture ne montre que le fond d'écran.
+- La fenêtre peut être derrière une autre, mais **pas réduite** dans le Dock.
+- `CAMERA_APP=Bambu Handy` si tu utilises Handy ; `CAMERA_MODE=screen` pour capturer l'écran entier.
+- Le suivi se cale sur le temps (l'état réel n'est pas lisible à distance) : photo ~6 min après
+  le lancement (`PRINT_PREP_MINUTES` + 1), photo finale à la fin estimée. La photo montre la
+  progression réelle affichée par l'app.
+- **Plateau** : l'A1 mini n'éjecte pas ses pièces. Après une impression, la suivante exige un
+  deuxième « oui » explicite (« le plateau doit être vide »).
 
 ## Installation (Mac)
 
@@ -93,7 +116,7 @@ fichiers attendus) sont dans [`prompts/designer.md`](prompts/designer.md) : adap
 ## Tests
 
 ```bash
-npm run check          # types + 289 tests unitaires + parcours complet simulé (à lancer avant la démo)
+npm run check          # types + 360 tests unitaires + parcours complet simulé (à lancer avant la démo)
 npm test               # tests unitaires seuls
 npm run test:coverage  # couverture (≈ 99 %)
 ```
@@ -108,10 +131,12 @@ Ce que les tests verrouillent :
 | **Claude** | Prompt passé par stdin (guillemets, `$`, accents), reprise de session, outils d'impression interdits pendant la conception, variables de la session Claude parente retirées. |
 | **WhatsApp** | Numéros `@lid`, suffixes d'appareil, groupes/statuts/chaînes ignorés, whitelist, doublons. |
 | **Serveur** | Le webhook répond tout de suite même si Claude travaille plusieurs minutes ; une erreur n'arrête jamais le serveur. |
+| **Caméra & suivi** | Bonne fenêtre choisie (app, taille, visible), capture JPEG réduite, aucun fichier temporaire laissé ; photos au bon moment (horloge simulée) ; caméra absente ou en panne → message clair ; deuxième impression bloquée tant que le plateau n'est pas confirmé vide. |
 
 ## Check-list démo
 
-- [ ] Imprimante allumée, plateau propre, filament chargé, connectée au cloud Bambu
+- [ ] À Casablanca : A1 mini allumée, **plateau vide et propre**, filament chargé, en ligne
+- [ ] Bambu Studio ouvert sur le Mac, onglet Appareil, vue caméra visible ; `npm run snapshot` OK
 - [ ] `http://localhost:4100/health` → `"whatsapp": "open"`
 - [ ] Test complet la veille sur le réseau de la salle (ou partage 4G)
 - [ ] Une impression de secours déjà faite, à sortir « comme dans une émission de cuisine »

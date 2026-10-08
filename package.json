@@ -12,7 +12,8 @@
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
     "test:coverage": "vitest run --coverage --coverage.include='src/**' --coverage.exclude='src/__tests__/**' --coverage.exclude='src/index.ts'",
-    "check": "tsc --noEmit && vitest run && tsx scripts/smoke.ts"
+    "check": "tsc --noEmit && vitest run && tsx scripts/smoke.ts",
+    "snapshot": "tsx --env-file=.env scripts/snapshot.ts"
   },
   "dependencies": {
     "express": "^4.21.2",

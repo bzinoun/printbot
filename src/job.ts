@@ -2,11 +2,11 @@
  * Dossier de job : création, lecture de job.json / print.json, rendu de l'aperçu.
  */
 
-import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
 import { getConfig } from './config.js'
+import { runCommand } from './exec.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ module: 'job' })
@@ -71,25 +71,6 @@ export function clearOutputs(dir: string, files = ['preview.png', 'job.json', 'p
   for (const f of files) rmSync(path.join(dir, 'out', f), { force: true })
 }
 
-function run(bin: string, args: string[], cwd: string, timeoutMs = 120_000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const child = spawn(bin, args, { cwd, stdio: ['ignore', 'ignore', 'pipe'] })
-    let stderr = ''
-    child.stderr.on('data', (d) => (stderr += d))
-    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
-    child.on('error', (err) => {
-      clearTimeout(timer)
-      log.warn({ bin, error: err.message }, 'Commande introuvable')
-      resolve(false)
-    })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      if (code !== 0) log.warn({ bin, code, stderr: stderr.slice(-400) }, 'Commande en échec')
-      resolve(code === 0)
-    })
-  })
-}
-
 const usable = (file: string) => existsSync(file) && statSync(file).size > 0
 
 /**
@@ -114,10 +95,10 @@ export async function ensurePreview(dir: string): Promise<string | null> {
   if (!source) return null
 
   log.info({ source }, 'Rendu de l’aperçu par PrintBot (Claude ne l’a pas produit)')
-  const ok = await run(
+  const { ok } = await runCommand(
     getConfig().openscadBin,
     ['-o', preview, '--imgsize=1080,1080', '--viewall', '--autocenter', '--colorscheme=Tomorrow Night', source],
-    out,
+    { cwd: out },
   )
   return ok && usable(preview) ? preview : null
 }
